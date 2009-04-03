@@ -7,7 +7,7 @@ use Scalar::Util qw( refaddr );
 use List::Util qw( shuffle );
 use File::Spec ();
 use Storable ();
-use TheSchwartz::Moosified::Utils qw/insert_id sql_for_unixtime bind_param_attr/;
+use TheSchwartz::Moosified::Utils qw/insert_id sql_for_unixtime bind_param_attr run_in_txn/;
 use TheSchwartz::Moosified::Job;
 use TheSchwartz::Moosified::JobHandle;
 
@@ -89,6 +89,39 @@ sub shuffled_databases {
     return shuffle( @{ $self->databases } );
 }
 
+sub _try_insert {
+    my $self = shift;
+    my $job = shift;
+    my $dbh = shift;
+    run_in_txn {
+        $job->funcid( $self->funcname_to_id( $dbh, $job->funcname ) );
+        $job->insert_time(time());
+
+        my $row = $job->as_hashref;
+        if ($dbh->isa('DBD::Pg::db')) {
+            delete $row->{jobid};
+        }
+        my @col = keys %$row;
+
+        my $sql = sprintf 'INSERT INTO job (%s) VALUES (%s)',
+            join( ", ", @col ), join( ", ", ("?") x @col );
+
+        my $sth = $dbh->prepare_cached($sql);
+        my $i = 1;
+        for my $col (@col) {
+            $sth->bind_param(
+                $i++,
+                $row->{$col},
+                bind_param_attr( $dbh, $col ),
+            );
+        }
+        $sth->execute();
+
+        my $jobid = insert_id( $dbh, $sth, "job", "jobid" );
+        $job->jobid($jobid);
+    } $dbh;
+}
+
 sub insert {
     my $self = shift;
 
@@ -103,41 +136,20 @@ sub insert {
 
     for my $dbh ( $self->shuffled_databases ) {
         eval {
-            $job->funcid( $self->funcname_to_id( $dbh, $job->funcname ) );
-            $job->insert_time(time());
-
-            my $row = $job->as_hashref;
-            my @col = keys %$row;
-
-            my $sql = sprintf 'INSERT INTO job (%s) VALUES (%s)',
-                join( ", ", @col ), join( ", ", ("?") x @col );
-
-            my $sth = $dbh->prepare_cached($sql);
-            my $i = 1;
-            for my $col (@col) {
-                $sth->bind_param(
-                    $i++,
-                    $row->{$col},
-                    bind_param_attr( $dbh, $col ),
-                );
-            }
-            $sth->execute();
-
-            my $jobid = insert_id( $dbh, $sth, "job", "jobid" );
-            $job->jobid($jobid);
+            $self->_try_insert($job,$dbh);
         };
 
-        if ($job->jobid) {
-            ## We inserted the job successfully!
-            ## Attach a handle to the job, and return the handle.
-            my $handle = TheSchwartz::Moosified::JobHandle->new({
-                    dbh    => $dbh,
-                    client => $self,
-                    jobid  => $job->jobid
-                });
-            $job->handle($handle);
-            return $handle;
-        }
+        next unless $job->jobid;
+
+        ## We inserted the job successfully!
+        ## Attach a handle to the job, and return the handle.
+        my $handle = TheSchwartz::Moosified::JobHandle->new({
+                dbh    => $dbh,
+                client => $self,
+                jobid  => $job->jobid
+            });
+        $job->handle($handle);
+        return $handle;
     }
 
     return;
@@ -456,12 +468,17 @@ sub funcname_to_id {
     my $cache = $self->_funcmap_cache($dbh);
 
     unless ( exists $cache->{funcname2id}{$funcname} ) {
-        ## This might fail in a race condition since funcname is UNIQUE
-        my $sth = $dbh->prepare_cached(
-            'INSERT INTO funcmap (funcname) VALUES (?)');
-        eval { $sth->execute($funcname) };
+        my $id;
+        eval {
+            run_in_txn {
+                ## This might fail in a race condition since funcname is UNIQUE
+                my $sth = $dbh->prepare_cached(
+                    'INSERT INTO funcmap (funcname) VALUES (?)');
+                $sth->execute($funcname);
 
-        my $id = insert_id( $dbh, $sth, "funcmap", "funcid" );
+                $id = insert_id( $dbh, $sth, "funcmap", "funcid" );
+            } $dbh;
+        };
 
         ## If we got an exception, try to load the record again
         if ($@) {

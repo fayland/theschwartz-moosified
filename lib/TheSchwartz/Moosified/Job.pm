@@ -2,7 +2,7 @@ package TheSchwartz::Moosified::Job;
 
 use Moose;
 use Storable ();
-use TheSchwartz::Moosified::Utils qw/sql_for_unixtime/;
+use TheSchwartz::Moosified::Utils qw/sql_for_unixtime run_in_txn/;
 use TheSchwartz::Moosified::JobHandle;
 
 has 'jobid'         => ( is => 'rw', isa => 'Int' );
@@ -10,7 +10,7 @@ has 'funcid'        => ( is => 'rw', isa => 'Int' );
 has 'arg'           => ( is => 'rw', isa => 'Any' );
 has 'uniqkey'       => ( is => 'rw', isa => 'Maybe[Str]' );
 has 'insert_time'   => ( is => 'rw', isa => 'Maybe[Int]' );
-has 'run_after'     => ( is => 'rw', isa => 'Int', default => time() );
+has 'run_after'     => ( is => 'rw', isa => 'Int', default => sub { time } );
 has 'grabbed_until' => ( is => 'rw', isa => 'Int', default => 0 );
 has 'priority'      => ( is => 'rw', isa => 'Maybe[Int]' );
 has 'coalesce'      => ( is => 'rw', isa => 'Maybe[Str]' );
@@ -18,19 +18,20 @@ has 'coalesce'      => ( is => 'rw', isa => 'Maybe[Str]' );
 has 'funcname' => (
     is => 'rw',
     isa => 'Str',
-    lazy => 1,
-    default => sub {
-        my ($self) = @_;
-        
-        my $handle = $self->handle;
-        my $client = $handle->client;
-        my $dbh    = $handle->dbh;
-        my $funcname = $client->funcid_to_name($dbh, $self->funcid)
-            or die "Failed to lookup funcname of job $self";
-        return $funcname;
-    }
+    lazy_build => 1,
 );
-has 'handle' => ( is => 'rw', isa => 'TheSchwartz::Moosified::JobHandle' );
+
+has 'handle' => (
+    is => 'rw',
+    isa => 'TheSchwartz::Moosified::JobHandle',
+    handles => [qw(
+        exit_status
+        failure_log
+        failures
+        client
+        dbh
+    )],
+);
 
 has 'did_something' => ( is => 'rw', isa => 'Bool', default => 0 );
 
@@ -48,10 +49,17 @@ sub BUILD {
     }
 }
 
+sub _build_funcname {
+    my $self = shift;
+    my $funcname = $self->client->funcid_to_name($self->dbh, $self->funcid)
+        or die "Failed to lookup funcname of job $self";
+    return $funcname;
+}
+
 sub debug {
     my ($self, $msg) = @_;
     
-    $self->handle->client->debug($msg, $self);
+    $self->client->debug($msg, $self);
 }
 
 sub as_hashref {
@@ -62,7 +70,7 @@ sub as_hashref {
         $data{$col} = $self->$col if $self->can($col);
     }
 
-    \%data;
+    return \%data;
 }
 
 sub add_failure {
@@ -70,7 +78,7 @@ sub add_failure {
     my ($msg) = @_;
     
     my $sql = q~INSERT INTO error (error_time, jobid, message, funcid) VALUES (?, ?, ?, ?)~;
-    my $dbh = $job->handle->dbh;
+    my $dbh = $job->dbh;
     my $sth = $dbh->prepare($sql);
     $sth->execute(time(), $job->jobid, $msg || '', $job->funcid);
 
@@ -91,21 +99,18 @@ sub completed {
         return 0;
     }
     $job->did_something(1);
-    $job->set_exit_status(0);
-    $job->remove();
+    return run_in_txn {
+        $job->set_exit_status(0);
+        $job->remove();
+    } $job->dbh;
 }
 
 sub remove {
-    my ($job) = @_;
+    my $job = shift;
     
-    my $dbh = $job->handle->dbh;
     my $jobid = $job->jobid;
-    $dbh->do(qq~DELETE FROM job WHERE jobid = $jobid~);
+    $job->dbh->do(qq~DELETE FROM job WHERE jobid = $jobid~);
 }
-
-sub exit_status { shift->handle->exit_status }
-sub failure_log { shift->handle->failure_log }
-sub failures    { shift->handle->failures    }
 
 sub set_exit_status {
     my $job = shift;
@@ -114,9 +119,10 @@ sub set_exit_status {
     my $secs = $class->keep_exit_status_for or return;
     
     my $sql = q~INSERT INTO exitstatus (jobid, funcid, status, completion_time, delete_after) VALUES (?, ?, ?, ?, ?)~;
-    my $dbh = $job->handle->dbh;
+    my $dbh = $job->dbh;
     my $sth = $dbh->prepare($sql);
-    $sth->execute( $job->jobid, $job->funcid, $exit, time(), time() + $secs );
+    my $t = time();
+    $sth->execute( $job->jobid, $job->funcid, $exit, $t, $t + $secs );
 
     # and let's lazily clean some exitstatus while we're here.  but
     # rather than doing this query all the time, we do it 1/nth of the
@@ -163,23 +169,25 @@ sub _failed {
     $job->did_something(1);
     $job->debug("job failed: " . ($msg || "<no message>"));
 
-    ## Mark the failure in the error table.
-    $job->add_failure($msg);
+    run_in_txn {
+        ## Mark the failure in the error table.
+        $job->add_failure($msg);
 
-    if ($_retry) {
-        my $class = $job->funcname;
-        my $sql = q~UPDATE job SET ~;
-        if (my $delay = $class->retry_delay($failures)) {
-            my $run_after = time() + $delay;
-            $job->run_after($run_after);
-            $sql .= qq~run_after = $run_after, ~;
+        if ($_retry) {
+            my $class = $job->funcname;
+            my $sql = q~UPDATE job SET ~;
+            if (my $delay = $class->retry_delay($failures)) {
+                my $run_after = time() + $delay;
+                $job->run_after($run_after);
+                $sql .= qq~run_after = $run_after, ~;
+            }
+            $sql .= q~grabbed_until=0~;
+            $job->dbh->do($sql);
+        } else {
+            $job->set_exit_status($exit_status || 1);
+            $job->remove();
         }
-        $sql .= q~grabbed_until=0~;
-        $job->handle->dbh->do($sql);
-    } else {
-        $job->set_exit_status($exit_status || 1);
-        $job->remove();
-    }
+    } $job->dbh;
 }
 
 sub replace_with {
@@ -192,31 +200,22 @@ sub replace_with {
     }
     # Note: we don't set 'did_something' here because completed does it down below.
 
-    ## The new jobs @jobs should be inserted into the same database as $job,
-    ## which they're replacing. So get a driver for the database that $job
-    ## belongs to.
-    my $handle = $job->handle;
-    my $client = $handle->client;
-    my $dbh    = $handle->dbh;
-
     $job->debug("replacing job with " . (scalar @jobs) . " other jobs");
 
-    ## XXX? TODO
-    ## Start a transaction.
+    ## The new jobs @jobs should be inserted into the same database as $job,
+    ## which they're replacing.
+    run_in_txn {
+        ## Insert the new jobs.
+        $job->client->insert($_) for @jobs;
 
-    ## Insert the new jobs.
-    for my $j (@jobs) {
-        $client->insert($j);
-    }
-
-    ## Mark the original job as completed successfully.
-    $job->completed;
+        ## Mark the original job as completed successfully.
+        $job->completed;
+    } $job->dbh;
 }
 
 sub set_as_current {
     my $job = shift;
-    my $client = $job->handle->client;
-    $client->current_job($job);
+    $job->client->current_job($job);
 }
 
 sub _cond_thaw {
