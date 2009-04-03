@@ -303,7 +303,7 @@ sub list_jobs {
             my $sth = $dbh->prepare_cached($sql);
             $sth->execute(@value);
             while ( my $ref = $sth->fetchrow_hashref ) {
-                $ref->{funcname} = $arg->{funcname};
+                $ref->{funcname} = $self->funcid_to_name($dbh, $ref->{funcid});
                 my $job = TheSchwartz::Moosified::Job->new( $ref );
                 if ($arg->{want_handle}) {
                     my $handle = TheSchwartz::Moosified::JobHandle->new({
