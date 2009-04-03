@@ -181,7 +181,7 @@ sub find_job_for_workers {
                       @$worker_classes;
 
             my $ids = join(',', @ids);
-            my $sql = qq~SELECT * FROM job WHERE funcid IN ($ids) AND run_after <= $unixtime AND grabbed_until <= $unixtime $order_by LIMIT 0, $limit~;
+            my $sql = qq~SELECT * FROM job WHERE funcid IN ($ids) AND run_after <= $unixtime AND grabbed_until <= $unixtime $order_by LIMIT $limit~;
 
             my $sth = $dbh->prepare_cached($sql);
             $sth->execute();
@@ -293,7 +293,7 @@ sub list_jobs {
                 $funcop = '=';
             }
 
-            my $sql = qq~SELECT * FROM job WHERE funcid $funcop $funcid $order_by LIMIT 0, $limit~;
+            my $sql = qq~SELECT * FROM job WHERE funcid $funcop $funcid $order_by LIMIT $limit~;
             my @value = ();
             for (@options) {
                 $sql .= " AND $_->{key} $_->{op} ?";
@@ -351,7 +351,7 @@ sub _find_job_with_coalescing {
             ##    in the past).
             my $funcid = $client->funcname_to_id($dbh, $funcname);
 
-            my $sql = qq~SELECT * FROM job WHERE funcid = ? AND run_after <= $unixtime AND grabbed_until <= $unixtime AND coalesce $op ? $order_by LIMIT 0, $limit~;
+            my $sql = qq~SELECT * FROM job WHERE funcid = ? AND run_after <= $unixtime AND grabbed_until <= $unixtime AND coalesce $op ? $order_by LIMIT $limit~;
             my $sth = $dbh->prepare_cached($sql);
             $sth->execute( $funcid, $coval );
             while ( my $ref = $sth->fetchrow_hashref ) {
