@@ -4,7 +4,7 @@ use base 'Exporter';
 use Carp;
 use vars qw/@EXPORT_OK/;
 
-@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr/;
+@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr run_in_txn/;
 
 sub insert_id {
     my ( $dbh, $sth, $table, $col ) = @_;
@@ -55,6 +55,32 @@ sub bind_param_attr {
     return;
 }
 
+
+sub run_in_txn (&$) {
+    my $code = shift;
+    my $dbh = shift;
+    local $dbh->{RaiseError} = 1;
+
+    my $need_txn = $dbh->{AutoCommit} ? 1 : 0;
+    return $code->() unless $need_txn;
+
+    my @rv;
+    my $rv;
+    eval {
+        $dbh->begin_work;
+        if (wantarray) {
+            @rv = $code->();
+        }
+        else {
+            $rv = $code->();
+        }
+        $dbh->commit;
+    };
+    if (my $err = $@) { eval { $dbh->rollback }; die $err }
+
+    return @rv if wantarray;
+    return $rv;
+}
 
 1;
 __END__
