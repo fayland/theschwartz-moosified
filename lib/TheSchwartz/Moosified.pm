@@ -303,6 +303,7 @@ sub list_jobs {
             my $sth = $dbh->prepare_cached($sql);
             $sth->execute(@value);
             while ( my $ref = $sth->fetchrow_hashref ) {
+                $ref->{funcname} = $arg->{funcname};
                 my $job = TheSchwartz::Moosified::Job->new( $ref );
                 if ($arg->{want_handle}) {
                     my $handle = TheSchwartz::Moosified::JobHandle->new({
@@ -355,6 +356,7 @@ sub _find_job_with_coalescing {
             my $sth = $dbh->prepare_cached($sql);
             $sth->execute( $funcid, $coval );
             while ( my $ref = $sth->fetchrow_hashref ) {
+                $ref->{funcname} = $funcname;
                 my $job = TheSchwartz::Moosified::Job->new( $ref );
                 push @jobs, $job;
             }
