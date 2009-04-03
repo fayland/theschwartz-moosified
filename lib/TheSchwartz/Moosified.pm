@@ -98,7 +98,7 @@ sub _try_insert {
         $job->insert_time(time());
 
         my $row = $job->as_hashref;
-        if ($dbh->isa('DBD::Pg::db')) {
+        if ($dbh->{Driver}{Name} && $dbh->{Driver}{Name} eq 'Pg') {
             delete $row->{jobid};
         }
         my @col = keys %$row;
