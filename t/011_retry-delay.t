@@ -5,7 +5,7 @@ use warnings;
 use t::Utils;
 use TheSchwartz::Moosified;
 
-plan tests => 8;
+plan tests => 11;
 
 run_test {
     my $dbh = shift;
@@ -19,11 +19,28 @@ run_test {
     {
         my $handle = $client->insert("Worker::CompleteEventually");
         isa_ok $handle, 'TheSchwartz::Moosified::JobHandle', "inserted job";
+        my $eventually_run_after = $handle->job->run_after;
 
+        my $h2 = $client->insert("Worker::Complete");
+        isa_ok $h2, 'TheSchwartz::Moosified::JobHandle',
+            "inserted job that won't get run";
+        my $h2_after = $h2->job->run_after;
+
+        my ($before_retry) = $dbh->selectall_arrayref(q{
+            SELECT * FROM job WHERE jobid=?
+        }, {}, $h2->jobid);
+
+        $client->reset_abilities();
         $client->can_do("Worker::CompleteEventually");
         $client->work_until_done;
 
         is($handle->failures, 1, "job has failed once");
+
+        my ($after_retry) = $dbh->selectall_arrayref(q{
+            SELECT * FROM job WHERE jobid=?
+        }, {}, $h2->jobid);
+        is_deeply $after_retry, $before_retry,
+            'odd job wasn\'t affected by the retry';
 
         my $job = Worker::CompleteEventually->grab_job($client);
         ok(!$job, "a job isn't ready yet"); # hasn't been two seconds
@@ -41,6 +58,12 @@ run_test {
         Worker::CompleteEventually->work_safely($job);
         ok(! $handle->is_pending, "job has exited");
         is($handle->exit_status, 0, "job succeeded");
+
+        my ($far_after_retry) = $dbh->selectall_arrayref(q{
+            SELECT * FROM job WHERE jobid=?
+        }, {}, $h2->jobid);
+        is_deeply $far_after_retry, $before_retry,
+            'odd job still wasn\'t affected by the retry';
     }
 };
 
@@ -67,4 +90,11 @@ sub retry_delay {
     my $class = shift;
     my $fails = shift;
     return [undef,2,0]->[$fails];  # fails 2 seconds first time, then immediately
+}
+
+package Worker::Complete;
+use base 'TheSchwartz::Moosified::Worker';
+sub work {
+    my ($class, $job) = @_;
+    $job->completed;
 }

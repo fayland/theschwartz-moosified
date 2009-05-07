@@ -175,14 +175,17 @@ sub _failed {
 
         if ($_retry) {
             my $class = $job->funcname;
-            my $sql = q~UPDATE job SET ~;
+            my @bind;
+            my $sql = q{UPDATE job SET };
             if (my $delay = $class->retry_delay($failures)) {
                 my $run_after = time() + $delay;
                 $job->run_after($run_after);
-                $sql .= qq~run_after = $run_after, ~;
+                push @bind, $run_after;
+                $sql .= qq{run_after = ?, };
             }
-            $sql .= q~grabbed_until=0~;
-            $job->dbh->do($sql);
+            $sql .= q{grabbed_until = 0 WHERE jobid = ?};
+            push @bind, $job->jobid;
+            $job->dbh->do($sql, {}, @bind);
         } else {
             $job->set_exit_status($exit_status || 1);
             $job->remove();
