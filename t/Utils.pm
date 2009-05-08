@@ -15,22 +15,37 @@ my $SCHEMA = join '', <DATA>;
 
 sub run_test (&) {
     my $code = shift;
+
     my $tmp = File::Temp->new;
     $tmp->close();
     my $tmpf = $tmp->filename;
-    my $dbh = DBI->connect("dbi:SQLite:dbname=$tmpf", '', '', {RaiseError => 1, PrintError => 0}) or die $DBI::err;
 
-    # work around for DBD::SQLite's resource leak
-    tie my %blackhole, 't::Utils::Blackhole';
-    $dbh->{CachedKids} = \%blackhole;
-
-    do {
+    my $dbh;
+    if ($ENV{ST_CURRENT}) {
+        use lib "$ENV{ST_CURRENT}/nlw/lib";
+        require Socialtext::SQL;
+        Socialtext::SQL::invalidate_dbh();
+        $dbh = Socialtext::SQL::get_dbh();
         $dbh->begin_work;
-        for (split /;\s*/, $SCHEMA) {
-            $dbh->do($_);
-        }
+        $dbh->do("DELETE FROM $_") for qw(funcmap exitstatus error job);
+        $dbh->do("ALTER SEQUENCE $_ RESTART WITH 1") for qw(job_jobid_seq funcmap_funcid_seq);
         $dbh->commit;
-    };
+    }
+    else {
+        $dbh = DBI->connect("dbi:SQLite:dbname=$tmpf", '', '', {RaiseError => 1, PrintError => 0}) or die $DBI::err;
+
+        # work around for DBD::SQLite's resource leak
+        tie my %blackhole, 't::Utils::Blackhole';
+        $dbh->{CachedKids} = \%blackhole;
+
+        do {
+            $dbh->begin_work;
+            for (split /;\s*/, $SCHEMA) {
+                $dbh->do($_);
+            }
+            $dbh->commit;
+        };
+    }
 
     $code->($dbh); # do test
 
