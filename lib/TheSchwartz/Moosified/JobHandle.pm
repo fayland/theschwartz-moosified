@@ -15,6 +15,7 @@ sub job {
     my $sth = $dbh->prepare_cached($sql);
     $sth->execute($handle->jobid);
     my $row = $sth->fetchrow_hashref;
+    $sth->finish;
     if ($row) {
         my $job = TheSchwartz::Moosified::Job->new( $row );
         $job->handle($handle);
