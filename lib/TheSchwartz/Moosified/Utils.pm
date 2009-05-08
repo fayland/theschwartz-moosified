@@ -4,7 +4,7 @@ use base 'Exporter';
 use Carp;
 use vars qw/@EXPORT_OK/;
 
-@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr run_in_txn/;
+@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr run_in_txn select_for_update/;
 
 sub insert_id {
     my ( $dbh, $sth, $table, $col ) = @_;
@@ -36,6 +36,9 @@ sub sql_for_unixtime {
     if ( $driver and $driver eq 'mysql' ) {
         return "UNIX_TIMESTAMP()";
     }
+    if ( $driver and $driver eq 'Pg' ) {
+        return "EXTRACT(EPOCH FROM NOW())::integer";
+    }
     
     return time();
 }
@@ -55,6 +58,17 @@ sub bind_param_attr {
     return;
 }
 
+sub select_for_update {
+    my $dbh = shift;
+    my $driver = $dbh->{Driver}{Name};
+    if ( !$driver or $driver eq 'SQLite' ) {
+        return '';
+    }
+    else {
+        # at least Pg, mysql, and oracle support FOR UPDATE:
+        return ' FOR UPDATE';
+    }
+}
 
 sub run_in_txn (&$) {
     my $code = shift;

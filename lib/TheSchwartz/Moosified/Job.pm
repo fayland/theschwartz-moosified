@@ -2,7 +2,7 @@ package TheSchwartz::Moosified::Job;
 
 use Moose;
 use Storable ();
-use TheSchwartz::Moosified::Utils qw/sql_for_unixtime run_in_txn/;
+use TheSchwartz::Moosified::Utils qw/sql_for_unixtime run_in_txn select_for_update/;
 use TheSchwartz::Moosified::JobHandle;
 
 has 'jobid'         => ( is => 'rw', isa => 'Int' );
@@ -117,12 +117,24 @@ sub set_exit_status {
     my($exit) = @_;
     my $class = $job->funcname;
     my $secs = $class->keep_exit_status_for or return;
-    
-    my $sql = q~INSERT INTO exitstatus (jobid, funcid, status, completion_time, delete_after) VALUES (?, ?, ?, ?, ?)~;
+
+    my $jobid = $job->jobid;
     my $dbh = $job->dbh;
-    my $sth = $dbh->prepare($sql);
+    my $needs_update = 0;
+    {
+        my $sth = $job->dbh->prepare(
+            q~SELECT 1 FROM exitstatus WHERE jobid=?~ . select_for_update($dbh)
+        );
+        $sth->execute($jobid);
+        ($needs_update) = $sth->fetchrow_array;
+    }
+
+    # note params are the same order for both queries:
+    my $sql = ($needs_update) ?
+        q~UPDATE exitstatus SET funcid=?, status=?, completion_time=?, delete_after=? WHERE jobid=?~ :
+        q~INSERT INTO exitstatus (funcid, status, completion_time, delete_after, jobid) VALUES (?, ?, ?, ?, ?)~ ;
     my $t = time();
-    $sth->execute( $job->jobid, $job->funcid, $exit, $t, $t + $secs );
+    $dbh->do($sql, {}, $job->funcid, $exit, $t, $t + $secs, $jobid);
 
     # and let's lazily clean some exitstatus while we're here.  but
     # rather than doing this query all the time, we do it 1/nth of the
