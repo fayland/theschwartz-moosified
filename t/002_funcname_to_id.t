@@ -17,7 +17,10 @@ run_test {
         is $sch->funcname_to_id($dbh1, 'bar'), 2;
         is $sch->funcname_to_id($dbh1, 'foo'), 1;
         is $sch->funcname_to_id($dbh1, 'baz'), 3;
-        is $sch->funcname_to_id($dbh2, 'bar'), 1, 'other dbh';
+        SKIP: {
+            skip "same dbh for ST",1 if ($ENV{ST_CURRENT});
+            is $sch->funcname_to_id($dbh2, 'bar'), 1, 'other dbh';
+        }
     };
 };
 
