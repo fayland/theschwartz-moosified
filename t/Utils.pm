@@ -11,6 +11,10 @@ plan skip_all => 'this test requires DBD::SQLite' if $@;
 eval 'require File::Temp';
 plan skip_all => 'this test requires File::Temp' if $@;
 
+BEGIN {
+    push @INC, "$ENV{ST_CURRENT}/nlw/lib" if $ENV{ST_CURRENT};
+}
+
 my $SCHEMA = join '', <DATA>;
 
 sub run_test (&) {
@@ -22,7 +26,6 @@ sub run_test (&) {
 
     my $dbh;
     if ($ENV{ST_CURRENT}) {
-        use lib "$ENV{ST_CURRENT}/nlw/lib";
         require Socialtext::SQL;
         Socialtext::SQL::invalidate_dbh();
         $dbh = Socialtext::SQL::get_dbh();
