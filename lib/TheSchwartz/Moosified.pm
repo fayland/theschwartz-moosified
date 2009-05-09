@@ -7,7 +7,7 @@ use Scalar::Util qw( refaddr );
 use List::Util qw( shuffle );
 use File::Spec ();
 use Storable ();
-use TheSchwartz::Moosified::Utils qw/insert_id sql_for_unixtime bind_param_attr run_in_txn/;
+use TheSchwartz::Moosified::Utils qw/insert_id sql_for_unixtime bind_param_attr run_in_txn order_by_priority/;
 use TheSchwartz::Moosified::Job;
 use TheSchwartz::Moosified::JobHandle;
 
@@ -278,10 +278,12 @@ sub list_jobs {
     }
     
     my $limit    = $arg->{limit} || $FIND_JOB_BATCH_SIZE;
-    my $order_by = $self->prioritize ? 'ORDER BY priority DESC' : '';
 
     my @jobs;
     for my $dbh ( $self->shuffled_databases ) {
+        #my $order_by = $self->prioritize ? 'ORDER BY priority DESC' : '';
+        my $order_by = $self->prioritize ? order_by_priority($dbh) : '';
+
         eval {
             
             my ($funcid, $funcop);

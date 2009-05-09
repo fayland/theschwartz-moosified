@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use t::Utils;
 use TheSchwartz::Moosified;
-plan tests => 20;
+plan tests => 25;
 
 run_test {
     my $dbh = shift;
@@ -14,11 +14,12 @@ run_test {
         TheSchwartz::Moosified::Job->new(
             funcname => 'fetch',
             arg      => 'http://pathtraq.com/',
-            priority => 3,
+            priority => 2,
         )
     );
 
     my @jobs = $sch->list_jobs( { funcname => 'fetch' } );
+    @jobs = sort { $a->{jobid} <=> $b->{jobid} } @jobs;
 
     my $row = $jobs[0];
     ok $row;
@@ -32,7 +33,7 @@ run_test {
     is $row->jobid,    2;
     is $row->funcid,   $sch->funcname_to_id( $dbh, 'fetch' );
     is $row->arg,      'http://pathtraq.com/';
-    is $row->priority, 3;
+    is $row->priority, 2;
     
     # test priority
     my $sch2 = TheSchwartz::Moosified->new( databases => [ $dbh ], prioritize => 1 );
@@ -64,5 +65,12 @@ run_test {
     @jobs = $sch2->list_jobs( { funcname => ['fetch', 'fetch2'], want_handle => 1 } );
     is(scalar @jobs, 4, 'funcname is arrayref');
     $row = $jobs[0];
+    is $row->funcname, 'fetch2';
+    is $row->jobid,    4;
+    is $row->priority, 3;
+    $row = $jobs[1];
     is $row->funcname, 'fetch';
+    is $row->jobid,    2;
+    is $row->priority, 2;
+
 };

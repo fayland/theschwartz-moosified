@@ -4,7 +4,7 @@ use base 'Exporter';
 use Carp;
 use vars qw/@EXPORT_OK/;
 
-@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr run_in_txn select_for_update/;
+@EXPORT_OK = qw/insert_id sql_for_unixtime bind_param_attr run_in_txn select_for_update order_by_priority/;
 
 sub insert_id {
     my ( $dbh, $sth, $table, $col ) = @_;
@@ -68,6 +68,19 @@ sub select_for_update {
         # at least Pg, mysql, and oracle support FOR UPDATE:
         return ' FOR UPDATE';
     }
+}
+
+sub order_by_priority {
+    my $dbh = shift;
+
+    my $driver = $dbh->{Driver}{Name};
+    if ( $driver and $driver eq 'Pg' ) {
+        # make NULL sort as if it were 0, consistent with SQLite
+        # Suggestion:
+        # CREATE INDEX ix_job_piro_non_null ON job (COALESCE(priority,0));
+        return 'ORDER BY COALESCE(priority,0) DESC';
+    }
+    return 'ORDER BY priority DESC';
 }
 
 sub run_in_txn (&$) {
