@@ -11,7 +11,7 @@ use TheSchwartz::Moosified::Utils qw/insert_id sql_for_unixtime bind_param_attr 
 use TheSchwartz::Moosified::Job;
 use TheSchwartz::Moosified::JobHandle;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 our $AUTHORITY = 'cpan:FAYLAND';
 
 ## Number of jobs to fetch at a time in find_job_for_workers.
@@ -759,6 +759,8 @@ L<TheSchwartz>, L<TheSchwartz::Simple>
 =head1 AUTHOR
 
 Fayland Lam, C<< <fayland at gmail.com> >>
+
+Jeremy Stashewsky, C<< <jstash+cpan at gmail.com> >>
 
 =head1 COPYRIGHT & LICENSE
 

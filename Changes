@@ -1,5 +1,10 @@
 Revision history for TheSchwartz-Moosified
 
+0.04_01 2009.5.8
+        Improve support for PostgreSQL.
+        Fix a retry_after bug that accidentally updated all jobs' run_after time.
+        Fix a bug where retries would insert multiple exitstatus rows.
+
 0.03    2009.2.17
         borrow some code from TheSchwartz::Simple
 
