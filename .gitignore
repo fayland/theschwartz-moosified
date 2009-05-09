@@ -1,0 +1,12 @@
+Build
+Makefile.old
+_build/
+blib/
+build-stamp
+debian/files
+debian/libtheschwartz-moosified-perl.substvars
+debian/libtheschwartz-moosified-perl/
+install-stamp
+Makefile
+core
+pm_to_blib
