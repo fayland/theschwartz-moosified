@@ -1,0 +1,15 @@
+Source: libtheschwartz-moosified-perl
+Section: perl
+Priority: optional
+Build-Depends: debhelper (>= 4.0.2), libmodule-build-perl
+Build-Depends-Indep: perl (>= 5.8.0-7)
+Maintainer: Jeremy Stashewsky <stash@topaz.socialtext.net>
+Standards-Version: 3.6.1
+
+Package: libtheschwartz-moosified-perl
+Architecture: all
+Depends: ${perl:Depends}, ${misc:Depends}, libscalar-list-util-perl, libdbi-perl, libmoose-perl
+Description: TheSchwartz based on Moose!
+ TheSchwartz based on Moose!
+ .
+ This description was automagically extracted from the module by dh-make-perl.
