@@ -1,0 +1,38 @@
+libtheschwartz-moosified-perl (0.03-6) unstable; urgency=high
+
+  * More important Pg fixes
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Fri,  8 May 2009 17:10:59 -0700
+
+libtheschwartz-moosified-perl (0.03-5) unstable; urgency=high
+
+  * Fix a bug with retrying jobs updating other jobs' run_after time.
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Wed,  6 May 2009 18:31:52 -0700
+
+libtheschwartz-moosified-perl (0.03-4) unstable; urgency=low
+
+  * support funcname as a list
+  * More postgres fixes
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Fri,  3 Apr 2009 13:47:55 -0700
+
+libtheschwartz-moosified-perl (0.03-3) unstable; urgency=low
+
+  * Another fix for postgres
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Fri,  3 Apr 2009 12:42:19 -0700
+
+libtheschwartz-moosified-perl (0.03-2) unstable; urgency=low
+
+  * Patched to execute composite commands in a transaction
+  * Support for Socialtext's AutoCommit-enabled DBH
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Fri,  3 Apr 2009 12:31:34 -0700
+
+libtheschwartz-moosified-perl (0.03-1) unstable; urgency=low
+
+  * Initial Release.
+
+ -- Jeremy Stashewsky <stash@topaz.socialtext.net>  Fri,  3 Apr 2009 12:28:20 -0700
+
