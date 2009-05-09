@@ -52,8 +52,7 @@ use base 'TheSchwartz::Moosified::Worker';
 
 sub work {
     my ($class, $job) = @_;
-
-    # ....
+    sleep 3;
 }
 
 1;
